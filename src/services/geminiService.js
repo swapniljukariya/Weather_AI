@@ -1,44 +1,64 @@
 const GEMINI_API_KEY = process.env.REACT_APP_GEMINI_API_KEY;
+const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
 
 export async function getWeatherQueryAnalysis(prompt) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
-
-  const systemPrompt = `Extract the location, type (current or forecast), parameters (e.g. temp, humidity, wind), and unit (metric or imperial) from this weather query: "${prompt}". Respond ONLY in this JSON format:
-{
-  "location": "string",
-  "type": "current" or "forecast",
-  "parameters": ["temp", "humidity"],
-  "unit": "metric" or "imperial"
-}`;
-
-  const body = {
-    contents: [
-      {
-        role: 'user',
-        parts: [{ text: systemPrompt }],
-      },
-    ],
-  };
-
-  const response = await fetch(url, {
+  const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    body: JSON.stringify({
+      contents: [{
+        parts: [{
+          text: `
+Given the user's query, extract:
+- location (city)
+- type (current/forecast)
+- parameters (like temperature, humidity, rain etc.)
+
+Respond **only in valid JSON format** like:
+{
+  "location": "Delhi",
+  "type": "current",
+  "parameters": ["temperature", "humidity"]
+}
+
+User Query: "${prompt}"
+`
+        }]
+      }]
+    })
   });
 
-  const result = await response.json();
+  const data = await response.json();
+  console.log('🧠 Gemini raw response:', data);
 
-  if (!result?.candidates?.[0]?.content?.parts?.[0]?.text) {
-    throw new Error('Gemini API returned no response');
+  const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+
+  try {
+    // Check for code block style ```json ... ```
+    const cleanedText = rawText?.replace(/```json|```/g, '').trim();
+    return JSON.parse(cleanedText);
+  } catch (err) {
+    console.error('Failed to parse Gemini JSON:', rawText);
+    throw new Error('Gemini response not in valid JSON');
   }
+}
 
-  const text = result.candidates[0].content.parts[0].text;
+export async function getWeatherInterpretation(weatherData) {
+  const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{
+        parts: [{
+          text: `Interpret this weather data for a user in friendly, natural language:\n${JSON.stringify(weatherData)}`
+        }]
+      }]
+    })
+  });
 
-  const jsonStart = text.indexOf('{');
-  const jsonEnd = text.lastIndexOf('}');
-  const jsonString = text.slice(jsonStart, jsonEnd + 1);
-  const parsed = JSON.parse(jsonString);
+  const data = await response.json();
+  console.log('🔍 Gemini interpretation response:', data);
 
-  console.log('✅ Gemini raw output:', text);
-  return parsed;
+  const interpretation = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+  return interpretation || 'Could not interpret weather data.';
 }

@@ -1,104 +1,74 @@
 import React, { useState } from 'react';
-import { getWeatherQueryAnalysis } from './services/geminiService';
+import { getWeatherQueryAnalysis, getWeatherInterpretation } from './services/geminiService';
 import { fetchWeatherData } from './services/weatherService';
 
-const App = () => {
-  const [query, setQuery] = useState('');
-  const [response, setResponse] = useState(null);
-  const [error, setError] = useState(null);
+function App() {
   const [messages, setMessages] = useState([]);
-  const [isTyping, setIsTyping] = useState(false);
+  const [input, setInput] = useState('');
 
   const handleAsk = async () => {
-    if (!query) return; // Prevent sending empty query
-
-    const userMessage = { text: query, sender: 'user' };
-    setMessages((prevMessages) => [...prevMessages, userMessage]);
-    setQuery('');
+    if (!input.trim()) return;
+    setMessages(prev => [...prev, { from: 'user', text: input }]);
 
     try {
-      setError(null);
-      setResponse(null);
-      setIsTyping(true);
+      // Get structured query from Gemini
+      const query = await getWeatherQueryAnalysis(input);
+      if (!query || !query.location) throw new Error("Couldn't parse query");
 
-      const analysis = await getWeatherQueryAnalysis(query);
-      const weather = await fetchWeatherData(analysis);
-      setIsTyping(false);
+      // Fetch weather from OpenWeather
+      const weatherData = await fetchWeatherData(query);
 
-      const botMessage = {
-        text: formatWeatherResponse(weather),
-        sender: 'bot',
-      };
+      // Send weatherData to Gemini for interpretation
+      const interpretation = await getWeatherInterpretation(weatherData);
 
-      setMessages((prevMessages) => [...prevMessages, botMessage]);
-    } catch (error) {
-      setIsTyping(false);
-      setError("Something went wrong. Please try again.");
+      setMessages(prev => [...prev, { from: 'bot', text: interpretation }]);
+    } catch (err) {
+      console.error(err);
+      setMessages(prev => [...prev, { from: 'bot', text: ` Oops! I couldn't understand your question.\n\n💡 Try asking things like:\n- "Should I carry an umbrella tomorrow in Delhi?"\n- "What's the weather like this weekend in Mumbai?"\n- "Will it be windy in Bangalore today?"\n\n🌟 Ask naturally, like you're talking to a friend!` }]);
     }
-  };
 
-  const formatWeatherResponse = (weather) => {
-    if (!weather) return 'Could not fetch weather data.';
-    
-    return `
-      Weather in ${weather.location}:
-      🌡️ Temp: ${weather.temperature}°C (Feels like ${weather.feels_like}°C)
-      💧 Humidity: ${weather.humidity}%
-      💨 Wind: ${weather.wind_speed} m/s
-      🌤️ Condition: ${weather.description}
-    `;
+    setInput('');
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-900 text-gray-200">
-      <div className="bg-gray-800 shadow-xl rounded-lg p-12 w-full sm:w-3/4 lg:w-1/2 xl:w-1/2 max-w-7xl">
-        <h1 className="text-4xl font-extrabold text-center text-white mb-8">WeatherBot</h1>
-
-        <div className="bg-gray-700 p-8 rounded-lg shadow-inner max-h-96 overflow-y-auto mb-8">
-          <div className="space-y-6">
-            {messages.map((msg, index) => (
+    <div className="min-h-screen bg-gradient-to-br from-blue-100 to-white p-6">
+      <h1 className="text-4xl font-bold text-center text-blue-800 mb-8">AskWeather 🌤️</h1>
+      <div className="max-w-3xl mx-auto bg-white rounded-3xl shadow-lg p-8">
+        <div className="space-y-4 h-[600px] overflow-y-auto mb-4 border p-6 rounded-xl bg-gray-50 shadow-inner">
+          {messages.map((msg, idx) => (
+            <div
+              key={idx}
+              className={`flex ${msg.from === 'user' ? 'justify-end' : 'justify-start'}`}
+            >
               <div
-                key={index}
-                className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}
+                className={`rounded-lg px-6 py-4 max-w-lg text-sm shadow-lg ${
+                  msg.from === 'user'
+                    ? 'bg-blue-500 text-white'
+                    : 'bg-gray-200 text-gray-800'
+                }`}
               >
-                <div
-                  className={`p-6 rounded-lg max-w-3xl ${msg.sender === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-600 text-gray-100'}`}
-                >
-                  {msg.text}
-                </div>
+                {msg.text}
               </div>
-            ))}
-            {isTyping && (
-              <div className="flex justify-start">
-                <div className="p-6 rounded-lg max-w-xs bg-gray-600 text-gray-100 italic">
-                  Typing...
-                </div>
-              </div>
-            )}
-          </div>
+            </div>
+          ))}
         </div>
-
-        <div className="flex mb-6">
+        <div className="flex gap-4 mt-6">
           <input
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            className="w-full p-6 rounded-lg border-2 border-gray-600 bg-gray-700 text-gray-100 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
             placeholder="Ask about the weather..."
+            className="flex-1 px-6 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 text-lg"
           />
+          <button
+            onClick={handleAsk}
+            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-300 text-lg"
+          >
+            Ask
+          </button>
         </div>
-
-        <button
-          onClick={handleAsk}
-          className="w-full bg-blue-600 text-white py-4 rounded-lg shadow-md hover:bg-blue-700 transition duration-300"
-        >
-          Ask
-        </button>
-
-        {error && <div className="text-red-500 mt-6 text-center">{error}</div>}
       </div>
     </div>
   );
-};
+}
 
 export default App;
