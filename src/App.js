@@ -1,5 +1,8 @@
 import React, { useState } from 'react';
-import { getWeatherQueryAnalysis, getWeatherInterpretation } from './services/geminiService';
+import {
+  getWeatherQueryAnalysis,
+  getWeatherInterpretation
+} from './services/geminiService';
 import { fetchWeatherData } from './services/weatherService';
 
 function App() {
@@ -11,20 +14,35 @@ function App() {
     setMessages(prev => [...prev, { from: 'user', text: input }]);
 
     try {
-      // Get structured query from Gemini
       const query = await getWeatherQueryAnalysis(input);
       if (!query || !query.location) throw new Error("Couldn't parse query");
 
-      // Fetch weather from OpenWeather
       const weatherData = await fetchWeatherData(query);
 
-      // Send weatherData to Gemini for interpretation
-      const interpretation = await getWeatherInterpretation(weatherData);
+      let reply = '';
 
-      setMessages(prev => [...prev, { from: 'bot', text: interpretation }]);
+      // If the query is for a forecast
+      if (query.type === 'forecast') {
+        if (weatherData.dailyForecasts?.length > 0) {
+          reply = `📅 Here's the forecast for ${query.location}:\n`;
+          weatherData.dailyForecasts.forEach((day) => {
+            reply += `\n🗓️ ${day.date} - ${day.condition} (${day.description})\n🌡️ ${day.min_temp}°C - ${day.max_temp}°C\n💨 Avg wind: ${day.avg_wind} m/s\n`;
+          });
+        } else {
+          reply = `Sorry, I couldn't find the forecast for ${query.location}.`;
+        }
+      } else {
+        // Otherwise, use Gemini to interpret the weather in friendly text
+        reply = await getWeatherInterpretation(weatherData);
+      }
+
+      setMessages(prev => [...prev, { from: 'bot', text: reply }]);
     } catch (err) {
       console.error(err);
-      setMessages(prev => [...prev, { from: 'bot', text: ` Oops! I couldn't understand your question.\n\n💡 Try asking things like:\n- "Should I carry an umbrella tomorrow in Delhi?"\n- "What's the weather like this weekend in Mumbai?"\n- "Will it be windy in Bangalore today?"\n\n🌟 Ask naturally, like you're talking to a friend!` }]);
+      setMessages(prev => [...prev, {
+        from: 'bot',
+        text: `Oops! I couldn't understand your question.\n\n💡 Try asking things like:\n- "What's the temperature in Delhi?"\n- "Will it rain in Mumbai tomorrow?"\n- "Show me the 5-day forecast for Bangalore."`
+      }]);
     }
 
     setInput('');
@@ -41,7 +59,7 @@ function App() {
               className={`flex ${msg.from === 'user' ? 'justify-end' : 'justify-start'}`}
             >
               <div
-                className={`rounded-lg px-6 py-4 max-w-lg text-sm shadow-lg ${
+                className={`rounded-lg px-6 py-4 max-w-lg text-sm shadow-lg whitespace-pre-wrap ${
                   msg.from === 'user'
                     ? 'bg-blue-500 text-white'
                     : 'bg-gray-200 text-gray-800'
