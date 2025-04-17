@@ -1,151 +1,104 @@
 import React, { useState } from 'react';
 import { getWeatherQueryAnalysis } from './services/geminiService';
+import { fetchWeatherData } from './services/weatherService';
 
-const weatherAPI = {
-  key: "fa1d365135fed0bc671f2abf68db4a6c",
-  base: "https://api.openweathermap.org/data/2.5/"
-};
-
-function App() {
+const App = () => {
   const [query, setQuery] = useState('');
-  const [weather, setWeather] = useState(null);
-  const [insight, setInsight] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [response, setResponse] = useState(null);
+  const [error, setError] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [isTyping, setIsTyping] = useState(false);
 
-  const handleSearch = async (e) => {
-    if (e.key === "Enter" && query.trim()) {
-      setLoading(true);
-      try {
-        // 1. Process with Gemini
-        const { location, date, focus } = await getWeatherQueryAnalysis(query);
-        
-        // 2. Fetch weather data
-        const response = await fetch(
-          `${weatherAPI.base}forecast?q=${location}&units=metric&appid=${weatherAPI.key}`
-        );
-        const data = await response.json();
-        
-        // 3. Generate insight
-        const weatherInsight = generateInsight(data, date, focus);
-        
-        setWeather(data);
-        setInsight(weatherInsight);
-        setQuery('');
-      } catch (error) {
-        console.error("Error:", error);
-        setInsight("Couldn't process your request. Try again.");
-      } finally {
-        setLoading(false);
-      }
+  const handleAsk = async () => {
+    if (!query) return; // Prevent sending empty query
+
+    const userMessage = { text: query, sender: 'user' };
+    setMessages((prevMessages) => [...prevMessages, userMessage]);
+    setQuery('');
+
+    try {
+      setError(null);
+      setResponse(null);
+      setIsTyping(true);
+
+      const analysis = await getWeatherQueryAnalysis(query);
+      const weather = await fetchWeatherData(analysis);
+      setIsTyping(false);
+
+      const botMessage = {
+        text: formatWeatherResponse(weather),
+        sender: 'bot',
+      };
+
+      setMessages((prevMessages) => [...prevMessages, botMessage]);
+    } catch (error) {
+      setIsTyping(false);
+      setError("Something went wrong. Please try again.");
     }
   };
 
-  const generateInsight = (forecast, date, focus) => {
-    const targetDate = date === 'tomorrow' 
-      ? new Date(Date.now() + 86400000).toISOString().split('T')[0]
-      : new Date().toISOString().split('T')[0];
+  const formatWeatherResponse = (weather) => {
+    if (!weather) return 'Could not fetch weather data.';
     
-    const weatherData = forecast.list.find(item => 
-      item.dt_txt.includes(targetDate)
-    );
-
-    if (!weatherData) return "No forecast available";
-
-    switch(focus) {
-      case 'rain':
-        return weatherData.rain 
-          ? `Rain probability: ${(weatherData.pop * 100).toFixed(0)}%` 
-          : "No rain expected";
-      case 'temperature':
-        return `Expected temperature: ${Math.round(weatherData.main.temp)}°C`;
-      case 'wind':
-        return `Wind speed: ${weatherData.wind.speed} m/s`;
-      default:
-        return weatherData.weather[0].description;
-    }
+    return `
+      Weather in ${weather.location}:
+      🌡️ Temp: ${weather.temperature}°C (Feels like ${weather.feels_like}°C)
+      💧 Humidity: ${weather.humidity}%
+      💨 Wind: ${weather.wind_speed} m/s
+      🌤️ Condition: ${weather.description}
+    `;
   };
 
   return (
-    <div className={`min-h-screen p-5 transition-colors duration-500 ${
-      weather?.list?.[0]?.main?.temp > 16 
-        ? 'bg-gradient-to-br from-orange-400 to-yellow-500' 
-        : 'bg-gradient-to-br from-blue-800 to-cyan-500'
-    }`}>
-      <main className="max-w-md mx-auto">
-        {/* Search Input */}
-        <div className="mb-8">
+    <div className="flex items-center justify-center min-h-screen bg-gray-900 text-gray-200">
+      <div className="bg-gray-800 shadow-xl rounded-lg p-12 w-full sm:w-3/4 lg:w-1/2 xl:w-1/2 max-w-7xl">
+        <h1 className="text-4xl font-extrabold text-center text-white mb-8">WeatherBot</h1>
+
+        <div className="bg-gray-700 p-8 rounded-lg shadow-inner max-h-96 overflow-y-auto mb-8">
+          <div className="space-y-6">
+            {messages.map((msg, index) => (
+              <div
+                key={index}
+                className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}
+              >
+                <div
+                  className={`p-6 rounded-lg max-w-3xl ${msg.sender === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-600 text-gray-100'}`}
+                >
+                  {msg.text}
+                </div>
+              </div>
+            ))}
+            {isTyping && (
+              <div className="flex justify-start">
+                <div className="p-6 rounded-lg max-w-xs bg-gray-600 text-gray-100 italic">
+                  Typing...
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="flex mb-6">
           <input
             type="text"
-            className="w-full p-4 rounded-2xl shadow-lg bg-white bg-opacity-80
-                     placeholder-gray-500 focus:outline-none focus:ring-2
-                     focus:ring-blue-300 text-gray-800"
-            placeholder="Ask anything (e.g. 'Will it rain in Delhi tomorrow?')"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            onKeyPress={handleSearch}
-            disabled={loading}
+            className="w-full p-6 rounded-lg border-2 border-gray-600 bg-gray-700 text-gray-100 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+            placeholder="Ask about the weather..."
           />
         </div>
 
-        {/* Loading State */}
-        {loading && (
-          <div className="text-white text-center text-xl py-8">Processing...</div>
-        )}
+        <button
+          onClick={handleAsk}
+          className="w-full bg-blue-600 text-white py-4 rounded-lg shadow-md hover:bg-blue-700 transition duration-300"
+        >
+          Ask
+        </button>
 
-        {/* AI Insight */}
-        {insight && (
-          <div className="bg-white bg-opacity-20 backdrop-blur-sm rounded-xl p-6 mb-6
-                        border border-white border-opacity-30 shadow-lg">
-            <p className="text-white text-xl font-medium">{insight}</p>
-          </div>
-        )}
-
-        {/* Weather Card */}
-        {weather && (
-          <div className="bg-white bg-opacity-10 backdrop-blur-sm rounded-xl p-6
-                        border border-white border-opacity-20 shadow-lg text-white">
-            <h2 className="text-2xl font-bold mb-2">
-              {weather.city.name}, {weather.city.country}
-            </h2>
-            <p className="mb-4 opacity-80">
-              {new Date(weather.list[0].dt * 1000).toLocaleDateString('en-US', {
-                weekday: 'long',
-                month: 'long',
-                day: 'numeric'
-              })}
-            </p>
-            
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-white bg-opacity-10 p-3 rounded-lg">
-                <p className="font-medium">Temperature</p>
-                <p className="text-2xl font-bold">
-                  {Math.round(weather.list[0].main.temp)}°C
-                </p>
-              </div>
-              <div className="bg-white bg-opacity-10 p-3 rounded-lg">
-                <p className="font-medium">Humidity</p>
-                <p className="text-2xl font-bold">
-                  {weather.list[0].main.humidity}%
-                </p>
-              </div>
-              <div className="bg-white bg-opacity-10 p-3 rounded-lg">
-                <p className="font-medium">Wind</p>
-                <p className="text-2xl font-bold">
-                  {weather.list[0].wind.speed} m/s
-                </p>
-              </div>
-              <div className="bg-white bg-opacity-10 p-3 rounded-lg">
-                <p className="font-medium">Conditions</p>
-                <p className="text-xl font-bold capitalize">
-                  {weather.list[0].weather[0].description}
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-      </main>
+        {error && <div className="text-red-500 mt-6 text-center">{error}</div>}
+      </div>
     </div>
   );
-}
+};
 
 export default App;
