@@ -1,67 +1,49 @@
-const GEMINI_API_KEY = process.env.REACT_APP_GEMINI_API_KEY;
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
-
-export const getWeatherQueryAnalysis = async (query) => {
+export const getGeminiPayload = async (query) => {
   try {
-    const res = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{
-          role: "user",
-          parts: [{
-            text: `You are a weather query parser. Convert the following natural language input to a JSON object:\n"${query}"\nReturn ONLY a valid JSON with this structure: {\n"location": "city name",\n"type": "current or forecast",\n"parameters": ["temp", "rain", "wind"],\n"unit": "metric or imperial"\n}`
-          }]
-        }]
-      })
-    });
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.REACT_APP_GEMINI_API_KEY}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                {
+                  text: `
+You're an assistant that helps generate structured weather queries.
+Given a natural language prompt from the user, return ONLY a JSON object with this format:
 
-    const data = await res.json();
-    const textResponse = data.candidates?.[0]?.content?.parts?.[0]?.text;
+{
+  "location": string,
+  "datetime": string (YYYY-MM-DD),
+  "type": "current" | "forecast",
+  "parameters": ["temp", "rain", "wind", "clouds", "humidity"]
+}
 
-    const jsonStart = textResponse.indexOf("{");
-    const jsonEnd = textResponse.lastIndexOf("}") + 1;
-    const jsonString = textResponse.substring(jsonStart, jsonEnd);
-    const parsed = JSON.parse(jsonString);
+User Prompt:
+${query}
+                  `.trim(),
+                },
+              ],
+              role: "user",
+            },
+          ],
+        }),
+      }
+    );
 
-    parsed.unit = parsed.unit || "metric";
-    parsed.type = parsed.type || "current";
-    parsed.parameters = parsed.parameters || ["temp"];
+    const json = await res.json();
+    const rawText = json?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!rawText) throw new Error("No response text from Gemini");
 
+    const cleaned = rawText.replace(/```json|```/g, "").trim();
+    const parsed = JSON.parse(cleaned);
+
+    console.log("Parsed Gemini Payload:", parsed);
     return parsed;
   } catch (error) {
-    console.error("Error analyzing query:", error);
-    throw error;
-  }
-};
-
-export const getWeatherInterpretation = async (weatherData, originalQuery) => {
-  try {
-    const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{
-          parts: [{
-            text: `
-You are a helpful weather assistant. Interpret the following OpenWeatherMap weather data and respond naturally to the user's question.
-
-Original user question:
-"${originalQuery}"
-
-Weather data:
-${JSON.stringify(weatherData)}
-            `
-          }]
-        }]
-      })
-    });
-
-    const data = await response.json();
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-    return text || 'Sorry, I couldn’t interpret the weather data.';
-  } catch (error) {
-    console.error("Error interpreting weather data:", error);
-    return 'Sorry, I couldn’t interpret the weather data.';
+    console.error("Failed to fetch Gemini payload:", error);
+    return null;
   }
 };
