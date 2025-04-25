@@ -1,47 +1,80 @@
-export const fetchWeatherData = async (payload) => {
-  const { location, type } = payload;
+export const fetchWeatherData = async ({ location, type }) => {
   const apiKey = process.env.REACT_APP_WEATHER_API_KEY;
 
-  const endpoint =
-    type === "current"
-      ? `https://api.openweathermap.org/data/2.5/weather?q=${location}&appid=${apiKey}&units=metric`
-      : `https://api.openweathermap.org/data/2.5/forecast?q=${location}&appid=${apiKey}&units=metric`;
+  const endpoints = {
+    current: `https://api.openweathermap.org/data/2.5/weather?q=${location}&appid=${apiKey}&units=metric`,
+    forecast: `https://api.openweathermap.org/data/2.5/forecast?q=${location}&appid=${apiKey}&units=metric`,
+  };
 
   try {
-    const response = await fetch(endpoint);
+    const response = await fetch(endpoints[type]);
     const data = await response.json();
+    console.log("API Response:", data);
 
     if (data.cod !== 200 && data.cod !== "200") {
       throw new Error(data.message || "Failed to fetch weather");
     }
 
-    const weatherSource = type === "forecast" ? data.list?.[0] : data;
+    // Use the full forecast data if we're querying the forecast
+    const weatherSource = type === "forecast" ? data.list : data;
 
-    if (!weatherSource || !weatherSource.main || !weatherSource.weather?.[0]) {
-      throw new Error("Incomplete weather data");
-    }
-
+    // Return data for both current weather and forecast
     return {
-      temp: weatherSource.main.temp ?? "N/A",
-      feels_like: weatherSource.main.feels_like ?? "N/A",
-      pressure: weatherSource.main.pressure ?? "N/A",
-      humidity: weatherSource.main.humidity ?? "N/A",
-      wind: weatherSource.wind?.speed ?? "N/A",
-      clouds: weatherSource.clouds?.all ?? "N/A",
+      main: weatherSource?.main ?? {},
+      wind: weatherSource?.wind ?? {},
+      clouds: weatherSource?.clouds ?? {},
+      visibility: weatherSource?.visibility,
       rain:
-        weatherSource.rain?.["1h"] ??
-        weatherSource.rain?.["3h"] ??
-        (weatherSource.weather[0].main.toLowerCase().includes("rain")
+        weatherSource?.rain?.["1h"] ??
+        weatherSource?.rain?.["3h"] ??
+        (weatherSource?.weather?.[0]?.main?.toLowerCase().includes("rain")
           ? "Expected"
-          : 0), // return mm, not string
-      weather: {
-        main: weatherSource.weather[0].main ?? "N/A",
-        description: weatherSource.weather[0].description ?? "N/A",
-        icon: weatherSource.weather[0].icon ?? "01d",
-      },
+          : 0),
+      weather: weatherSource?.weather ?? [],
+      forecast: type === "forecast" ? aggregateForecastByDay(data.list) : null, // Aggregate forecast data by day
+      type, // Include type in response for rendering control
     };
   } catch (error) {
     console.error("Weather API error:", error.message);
     return null;
   }
+};
+
+// Function to aggregate forecast data by day
+const aggregateForecastByDay = (forecastData) => {
+  const dailyForecast = [];
+
+  forecastData.forEach((forecastItem) => {
+    const date = new Date(forecastItem.dt * 1000);
+    const day = date.toLocaleDateString();
+
+    // Find if the day already exists in the daily forecast array
+    const existingDay = dailyForecast.find((item) => item.day === day);
+
+    if (existingDay) {
+      existingDay.temps.push(forecastItem.main.temp);
+      existingDay.weather.push(forecastItem.weather[0].description);
+    } else {
+      dailyForecast.push({
+        day,
+        temps: [forecastItem.main.temp],
+        weather: [forecastItem.weather[0].description],
+        humidity: forecastItem.main.humidity,
+        pressure: forecastItem.main.pressure,
+        windSpeed: forecastItem.wind.speed,
+        icon: forecastItem.weather[0].icon,
+      });
+    }
+  });
+
+  // For each day, calculate average temperature
+  return dailyForecast.map((dayData) => ({
+    day: dayData.day,
+    avgTemp: (dayData.temps.reduce((sum, temp) => sum + temp, 0) / dayData.temps.length).toFixed(1), // average temp
+    weather: dayData.weather[0], // Use first weather condition of the day
+    humidity: dayData.humidity,
+    pressure: dayData.pressure,
+    windSpeed: dayData.windSpeed,
+    icon: dayData.icon,
+  }));
 };

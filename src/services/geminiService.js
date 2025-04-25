@@ -11,19 +11,20 @@ export const getGeminiPayload = async (query) => {
               parts: [
                 {
                   text: `
-You're an assistant that helps generate structured weather queries.
-Given a natural language prompt from the user, return ONLY a JSON object with this format:
-
-{
-  "location": string,
-  "datetime": string (YYYY-MM-DD),
-  "type": "current" | "forecast",
-  "parameters": ["temp", "rain", "wind", "clouds", "humidity"]
-}
-
-User Prompt:
-${query}
-                  `.trim(),
+                  You're an assistant that helps generate structured weather queries.
+                  Given a user prompt, return ONLY a JSON object like:
+                  
+                  {
+                    "location": string,
+                    "datetime": string (YYYY-MM-DD),
+                    "type": "current" | "forecast",
+                    "parameters": ["temp", "feels_like", "humidity", "wind", "cloud", "rain", "pressure", "visibility", "sky", "general", "forecast"]
+                  }
+                  
+                  User Prompt:
+                  ${query}
+                  `
+                  .trim(),
                 },
               ],
               role: "user",
@@ -35,13 +36,28 @@ ${query}
 
     const json = await res.json();
     const rawText = json?.candidates?.[0]?.content?.parts?.[0]?.text;
+
     if (!rawText) throw new Error("No response text from Gemini");
 
     const cleaned = rawText.replace(/```json|```/g, "").trim();
     const parsed = JSON.parse(cleaned);
 
     console.log("Parsed Gemini Payload:", parsed);
-    return parsed;
+
+    const { location, datetime, type, parameters } = parsed;
+
+    // Handling the case where datetime might be null
+    if (!location || !type || !parameters || !Array.isArray(parameters)) {
+      throw new Error("Invalid or incomplete payload data");
+    }
+
+    // You can also set a default value for datetime if it's missing
+    const validDatetime = datetime || new Date().toISOString().split("T")[0]; // Default to today's date
+
+    return {
+      ...parsed,
+      datetime: validDatetime, // Ensure that datetime is valid
+    };
   } catch (error) {
     console.error("Failed to fetch Gemini payload:", error);
     return null;

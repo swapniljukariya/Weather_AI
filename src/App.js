@@ -1,4 +1,5 @@
-import { useState } from "react";
+
+import React, { useState } from "react";
 import WeatherInfoRenderer from "./components/WeatherInfoRenderer";
 import { getGeminiPayload } from "./services/geminiService";
 import { fetchWeatherData } from "./services/weatherService";
@@ -20,7 +21,25 @@ export default function App() {
       if (!data) throw new Error("Failed to fetch weather data.");
 
       setWeatherInfo(data);
-      setParameters(payload.parameters || []);
+
+      const lowerCaseQuery = query.toLowerCase();
+
+      if (lowerCaseQuery.includes("visibility")) {
+        setParameters(['visibility']);
+      } else if (lowerCaseQuery.includes("forecast")) {
+        setParameters(['forecast']);
+      } else if (lowerCaseQuery.includes("temperature")) {
+        setParameters(['temperature']);
+      } else if (lowerCaseQuery.includes("humidity")) {
+        setParameters(['humidity']);
+      } else if (lowerCaseQuery.includes("wind")) {
+        setParameters(['wind']);
+      } else if (lowerCaseQuery.includes("rain")) {
+        setParameters(['rain']);
+      } else {
+        setParameters(['general']);
+      }
+
     } catch (error) {
       console.error("Something went wrong:", error.message);
       setWeatherInfo(null);
@@ -31,7 +50,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-100 to-blue-300 p-6">
-      <div className="max-w-2xl mx-auto bg-white p-10 rounded-3xl shadow-2xl space-y-6">
+      <div className="max-w-5xl mx-auto bg-white p-8 rounded-3xl shadow-2xl space-y-6">
         <h1 className="text-3xl font-extrabold text-center text-blue-800">
           🌦️ Ask WeatherBot
         </h1>
@@ -39,7 +58,7 @@ export default function App() {
         <input
           type="text"
           className="w-full border text-lg p-4 rounded-xl"
-          placeholder="e.g., Will it rain in Delhi tomorrow?"
+          placeholder="e.g., What’s the visibility in Delhi?"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
