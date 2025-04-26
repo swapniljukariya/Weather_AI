@@ -190,10 +190,10 @@ const App = () => {
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 p-4 md:p-8">
       <div className="max-w-4xl mx-auto">
         <header className="mb-8 text-center">
-          <h1 className="text-3xl md:text-4xl font-bold text-blue-600 mb-2">
-            Weather AI Assistant
+          <h1 className="text-3xl md:text-4xl font-bold text-blue-600 mb-2 italic">
+            WeatherAI
           </h1>
-          <p className="text-gray-600">
+          <p className="text-gray-600 italic">
             Get precise weather information for any location
           </p>
         </header>
@@ -274,7 +274,7 @@ const App = () => {
               <FaCloudSunRain className="text-blue-500 text-3xl" />
             </div>
             <h3 className="text-xl font-semibold text-gray-700 mb-2">Ask About Weather</h3>
-            <p className="text-gray-500 max-w-md mx-auto">
+            <p className="text-gray-500 max-w-md mx-auto italic">
               Get specific weather information by asking about temperature, humidity, 
               wind, or forecasts for any location worldwide.
             </p>
