@@ -69,7 +69,7 @@ export const GeneralWeatherCard = ({
           <span>Humidity</span>
         </div>
         <div className="flex items-center">
-          <span className="text-2xl font-bold mr-2">{humidity || "N/A"}%</span>
+          <span className="text-2xl font-bold mr-2">{humidity || "N/A"} </span>
         </div>
       </div>
 
@@ -78,7 +78,7 @@ export const GeneralWeatherCard = ({
           <FaCompressAlt className="mr-2" />
           <span>Pressure</span>
         </div>
-        <span className="text-2xl font-bold">{pressure || "N/A"} hPa</span>
+        <span className="text-2xl font-bold">{pressure || "N/A"} </span>
       </div>
 
       <div className="bg-white/10 p-4 rounded-xl backdrop-blur-sm">
@@ -86,8 +86,8 @@ export const GeneralWeatherCard = ({
           <FaWind className="mr-2" />
           <span>Wind</span>
         </div>
-        <span className="text-xl font-bold">{wind_speed || "N/A"} m/s</span>
-        {wind_deg && <span className="text-sm block">Direction: {wind_deg}°</span>}
+        <span className="text-xl font-bold">{wind_speed || "N/A"} </span>
+        {wind_deg && <span className="text-sm block">Direction: {wind_deg}</span>}
       </div>
 
       <div className="bg-white/10 p-4 rounded-xl backdrop-blur-sm">
@@ -95,7 +95,7 @@ export const GeneralWeatherCard = ({
           <FaCloud className="mr-2" />
           <span>Clouds</span>
         </div>
-        <span className="text-xl font-bold">{cloudiness || "N/A"}%</span>
+        <span className="text-xl font-bold">{cloudiness || "N/A"}</span>
       </div>
 
       <div className="bg-white/10 p-4 rounded-xl backdrop-blur-sm">
@@ -103,7 +103,7 @@ export const GeneralWeatherCard = ({
           <FaEye className="mr-2" />
           <span>Visibility</span>
         </div>
-        <span className="text-xl font-bold">{visibility || "N/A"} km</span>
+        <span className="text-xl font-bold">{visibility || "N/A"} </span>
       </div>
     </div>
 

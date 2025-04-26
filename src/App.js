@@ -1,14 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import SpeechRecognition, { useSpeechRecognition } from 'react-speech-recognition';
 import { 
   FaCloudSunRain, 
-  FaSun, 
-  FaCloud, 
-  FaCloudRain, 
-  FaWind,
-  FaTemperatureHigh,
-  FaTint,
-  FaCompressAlt,
-  FaEye
+  FaMicrophone, 
+  FaStop,
+  FaSun,
+  FaCloud,
+  FaCloudRain,
+  FaWind
 } from 'react-icons/fa';
 import { getGeminiPayload } from './api/geminiAPI';
 import { fetchWeatherData } from './api/weatherAPI';
@@ -23,15 +22,42 @@ import {
   ForecastCard
 } from './components/WeatherCards';
 
+// Debounce function outside component
+function debounce(func, wait) {
+  let timeout;
+  return function(...args) {
+    const context = this;
+    clearTimeout(timeout);
+    timeout = setTimeout(() => func.apply(context, args), wait);
+  };
+}
+
 const App = () => {
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [weatherData, setWeatherData] = useState(null);
   const [error, setError] = useState(null);
   const [recommendedCard, setRecommendedCard] = useState(null);
+  const [isListening, setIsListening] = useState(false);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  // Speech recognition hook
+  const {
+    transcript,
+    listening,
+    resetTranscript,
+    browserSupportsSpeechRecognition
+  } = useSpeechRecognition();
+
+  // Update query when speech input changes
+  useEffect(() => {
+    if (transcript) {
+      setQuery(transcript);
+    }
+  }, [transcript]);
+
+  // Main submit handler
+  const handleSubmit = useCallback(async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
     if (!query.trim()) {
       setError('Please enter a weather query');
       return;
@@ -43,7 +69,6 @@ const App = () => {
     setRecommendedCard(null);
 
     try {
-      // Step 1: Analyze query with Gemini
       const geminiResponse = await getGeminiPayload(query);
       console.log("Gemini Response:", geminiResponse);
       
@@ -55,7 +80,6 @@ const App = () => {
         throw new Error('Please include a location (e.g., "humidity in Delhi")');
       }
 
-      // Step 2: Fetch weather data
       const weatherResponse = await fetchWeatherData(geminiResponse.location);
       
       if (!weatherResponse) {
@@ -68,18 +92,15 @@ const App = () => {
 
       setWeatherData(weatherResponse);
 
-      // Step 3: Determine which card to show
       const { parameters, type } = geminiResponse;
       const cardPriority = [
         'forecast', 'humidity', 'temp', 'feels_like', 
         'wind', 'pressure', 'cloud', 'visibility'
       ];
       
-      // Special handling for forecast type
       if (type === 'forecast') {
         setRecommendedCard('forecast');
       } 
-      // Find the highest priority parameter we support
       else if (parameters?.length) {
         const cardToShow = parameters.find(param => cardPriority.includes(param));
         setRecommendedCard(cardToShow || 'general');
@@ -96,8 +117,44 @@ const App = () => {
     } finally {
       setLoading(false);
     }
+  }, [query]);
+
+  // Debounced version of handleSubmit for voice input
+  const debouncedSubmit = useCallback(
+    debounce((query) => {
+      if (query.trim()) {
+        handleSubmit({ preventDefault: () => {} });
+      }
+    }, 1000),
+    [handleSubmit]
+  );
+
+  // Auto-submit effect for voice input
+  useEffect(() => {
+    if (!listening && transcript) {
+      debouncedSubmit(transcript);
+    }
+  }, [listening, transcript, debouncedSubmit]);
+
+  // Toggle voice input
+  const toggleListening = () => {
+    if (isListening) {
+      SpeechRecognition.stopListening();
+      setIsListening(false);
+    } else {
+      resetTranscript();
+      SpeechRecognition.startListening({ continuous: true });
+      setIsListening(true);
+    }
   };
 
+  // Handle regular input changes
+  const handleInputChange = (e) => {
+    setQuery(e.target.value);
+    // No automatic submission here
+  };
+
+  // Render the appropriate weather card
   const renderCard = () => {
     if (!weatherData || !recommendedCard) return null;
 
@@ -133,44 +190,55 @@ const App = () => {
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 p-4 md:p-8">
       <div className="max-w-4xl mx-auto">
         <header className="mb-8 text-center">
-          <h1 className="text-3xl md:text-4xl font-bold text-blue-600 mb-2 italic ">
-            WeatherChatBot
+          <h1 className="text-3xl md:text-4xl font-bold text-blue-600 mb-2">
+            Weather AI Assistant
           </h1>
-          <p className="text-gray-600 italic">
+          <p className="text-gray-600">
             Get precise weather information for any location
           </p>
         </header>
 
-        {/* Search Form */}
         <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
           <form onSubmit={handleSubmit} className="flex flex-col md:flex-row gap-4">
-            <input
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Ask about weather (e.g., 'humidity in Delhi', 'forecast for Paris')"
-              className="flex-grow p-4 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              disabled={loading}
-            />
+            <div className="relative flex-grow">
+              <input
+                type="text"
+                value={query}
+                onChange={handleInputChange}
+                placeholder="Ask about weather or speak your query..."
+                className="w-full p-4 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 pr-12"
+                disabled={loading}
+              />
+              <button
+                type="button"
+                onClick={toggleListening}
+                className={`absolute right-3 top-1/2 transform -translate-y-1/2 p-2 rounded-full ${isListening ? 'bg-red-500 text-white' : 'bg-gray-200 text-gray-700'}`}
+                disabled={!browserSupportsSpeechRecognition}
+              >
+                {isListening ? <FaStop /> : <FaMicrophone />}
+              </button>
+            </div>
             <button
               type="submit"
               disabled={loading}
               className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-4 px-6 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? (
-                <span className="flex items-center justify-center">
-                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  Analyzing...
-                </span>
-              ) : 'Get Weather'}
+              {loading ? 'Analyzing...' : 'Search'}
             </button>
           </form>
+          {isListening && (
+            <div className="mt-2 text-sm text-blue-600 flex items-center">
+              <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse mr-2"></div>
+              Listening... Speak your weather query
+            </div>
+          )}
+          {!browserSupportsSpeechRecognition && (
+            <div className="mt-2 text-sm text-red-500">
+              Voice input is not supported by your browser. Try Chrome or Edge.
+            </div>
+          )}
         </div>
 
-        {/* Loading State */}
         {loading && (
           <div className="text-center py-12">
             <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mx-auto"></div>
@@ -178,7 +246,6 @@ const App = () => {
           </div>
         )}
 
-        {/* Error State */}
         {error && (
           <div className="bg-blue-50 border-l-4 border-blue-400 text-blue-700 p-4 mb-8 rounded-lg">
             <h3 className="font-bold mb-2">We noticed an issue</h3>
@@ -195,14 +262,12 @@ const App = () => {
           </div>
         )}
 
-        {/* Weather Card Display */}
         {weatherData && (
           <div className="grid grid-cols-1 gap-6">
             {renderCard()}
           </div>
         )}
 
-        {/* Empty State */}
         {!loading && !weatherData && !error && (
           <div className="text-center py-12">
             <div className="mx-auto w-24 h-24 bg-blue-100 rounded-full flex items-center justify-center mb-4">
