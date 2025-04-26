@@ -1,91 +1,151 @@
+// src/App.js
+import React, { useState } from 'react';
+import { getGeminiPayload } from './api/geminiAPI';
+import { fetchWeatherData } from './api/weatherAPI';
+import {
+  GeneralWeatherCard,
+  TemperatureCard,
+  HumidityCard,
+  PressureCard,
+  WindCard,
+  CloudCard,
+  VisibilityCard,
+  ForecastCard
+} from './components/WeatherCards';
 
-import React, { useState } from "react";
-import WeatherInfoRenderer from "./components/WeatherInfoRenderer";
-import { getGeminiPayload } from "./services/geminiService";
-import { fetchWeatherData } from "./services/weatherService";
-
-export default function App() {
-  const [query, setQuery] = useState("");
-  const [weatherInfo, setWeatherInfo] = useState(null);
-  const [parameters, setParameters] = useState([]);
+const App = () => {
+  const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
+  const [weatherData, setWeatherData] = useState(null);
+  const [error, setError] = useState(null);
+  const [recommendedCard, setRecommendedCard] = useState(null);
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (e) => {
+    e.preventDefault();
     if (!query.trim()) return;
+
     setLoading(true);
+    setError(null);
+    setWeatherData(null);
+    setRecommendedCard(null);
+
     try {
-      const payload = await getGeminiPayload(query);
-      if (!payload) throw new Error("Failed to get payload from Gemini.");
-
-      const data = await fetchWeatherData(payload);
-      if (!data) throw new Error("Failed to fetch weather data.");
-
-      setWeatherInfo(data);
-
-      const lowerCaseQuery = query.toLowerCase();
-
-      if (lowerCaseQuery.includes("visibility")) {
-        setParameters(['visibility']);
-      } else if (lowerCaseQuery.includes("forecast")) {
-        setParameters(['forecast']);
-      } else if (lowerCaseQuery.includes("temperature")) {
-        setParameters(['temperature']);
-      } else if (lowerCaseQuery.includes("humidity")) {
-        setParameters(['humidity']);
-      } else if (lowerCaseQuery.includes("wind")) {
-        setParameters(['wind']);
-      } else if (lowerCaseQuery.includes("rain")) {
-        setParameters(['rain']);
-      } else {
-        setParameters(['general']);
+      // Step 1: Get structured data from Gemini
+      const geminiResponse = await getGeminiPayload(query);
+      console.log("Gemini Response:", geminiResponse);
+      if (!geminiResponse) {
+        throw new Error('Failed to analyze your query');
       }
 
-    } catch (error) {
-      console.error("Something went wrong:", error.message);
-      setWeatherInfo(null);
+      // Step 2: Fetch weather data
+      const weatherResponse = await fetchWeatherData(geminiResponse.location);
+      if (!weatherResponse) {
+        throw new Error('Failed to fetch weather data');
+      }
+
+      setWeatherData(weatherResponse);
+
+      // Step 3: Determine which single card to show based on Gemini's first parameter
+      const { parameters } = geminiResponse;
+      if (parameters && parameters.length > 0) {
+        setRecommendedCard(parameters[0]); // Take the first parameter only
+      }
+
+    } catch (err) {
+      console.error('Error:', err);
+      setError(err.message || 'Something went wrong');
     } finally {
       setLoading(false);
     }
   };
 
+  const renderRecommendedCard = () => {
+    if (!weatherData) return null;
+  
+    const { weather, forecast } = weatherData;
+  
+    // Check if forecast was specifically requested
+    const wantsForecast = recommendedCard?.includes('forecast');
+    const hasForecastData = forecast?.length > 0;
+  
+    if (wantsForecast) {
+      return hasForecastData ? (
+        <ForecastCard forecast={forecast} />
+      ) : (
+        <div className="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 rounded">
+          Forecast data not available
+        </div>
+      );
+    }
+  
+    // Rest of your card logic...
+    return <GeneralWeatherCard {...weather} />;
+  };
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-100 to-blue-300 p-6">
-      <div className="max-w-5xl mx-auto bg-white p-8 rounded-3xl shadow-2xl space-y-6">
-        <h1 className="text-3xl font-extrabold text-center text-blue-800">
-          🌦️ Ask WeatherBot
-        </h1>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 p-4 md:p-8">
+      <div className="max-w-6xl mx-auto">
+        <header className="mb-8 text-center">
+          <h1 className="text-3xl md:text-4xl font-bold text-blue-600 mb-2">
+            Weather AI Assistant
+          </h1>
+          <p className="text-gray-600">
+            Ask about weather conditions and get detailed information
+          </p>
+        </header>
 
-        <input
-          type="text"
-          className="w-full border text-lg p-4 rounded-xl"
-          placeholder="e.g., What’s the visibility in Delhi?"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
-        />
-
-        <button
-          className="w-full text-lg bg-blue-500 text-white py-3 rounded-xl hover:bg-blue-600 transition duration-300"
-          onClick={handleSubmit}
-          disabled={loading}
-        >
-          {loading ? "Fetching..." : "Get Weather"}
-        </button>
+        <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
+          <form onSubmit={handleSubmit} className="flex flex-col md:flex-row gap-4">
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Ask about weather (e.g., 'What's the visibility in Delhi?')"
+              className="flex-grow p-4 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <button
+              type="submit"
+              disabled={loading}
+              className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-4 px-6 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? 'Analyzing...' : 'Ask'}
+            </button>
+          </form>
+        </div>
 
         {loading && (
-          <p className="text-center text-gray-600 text-lg font-medium animate-pulse">
-            Fetching weather data...
-          </p>
+          <div className="text-center py-12">
+            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mx-auto"></div>
+            <p className="mt-4 text-gray-600">Analyzing your weather query...</p>
+          </div>
         )}
 
-        {!loading && weatherInfo ? (
-          <WeatherInfoRenderer data={weatherInfo} parameters={parameters} />
-        ) : (
-          !loading && (
-            <p className="text-center text-gray-500 text-lg">No data to show yet.</p>
-          )
+        {error && (
+          <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-8 rounded">
+            <p>{error}</p>
+          </div>
+        )}
+
+        {weatherData && recommendedCard && (
+          <div className="grid grid-cols-1 gap-6">
+            {renderRecommendedCard()}
+          </div>
+        )}
+
+        {weatherData && !recommendedCard && (
+          <div className="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 mb-8 rounded">
+            <p>We can't provide the specific weather information you requested.</p>
+          </div>
+        )}
+
+        {!loading && !weatherData && (
+          <div className="text-center py-12 text-gray-500">
+            <p>Ask a weather question to get started</p>
+          </div>
         )}
       </div>
     </div>
   );
-}
+};
+
+export default App;
